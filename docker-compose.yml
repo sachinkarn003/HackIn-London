@@ -1,0 +1,286 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: cloth-postgres
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: 1234
+      POSTGRES_DB: clothdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    container_name: cloth-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: cloth-kafka
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    ports:
+      - "9092:9092"
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 >/dev/null 2>&1 || exit 1"]
+      start_period: 30s
+      interval: 15s
+      timeout: 30s
+      retries: 20
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
+    container_name: cloth-elasticsearch
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200 >/dev/null || exit 1"]
+      start_period: 45s
+      interval: 15s
+      timeout: 10s
+      retries: 20
+
+  auth-service:
+    build: ./auth-service
+    container_name: cloth-auth-service
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/authdb
+      DB_USERNAME: user
+      DB_PASSWORD: 1234
+      JWT_SECRET: this-is-my-super-secret-key-which-is-very-long-123456
+      BOOTSTRAP_ADMIN_NAME: Admin User
+      BOOTSTRAP_ADMIN_EMAIL: admin@cloth.local
+      BOOTSTRAP_ADMIN_PASSWORD: Admin@12345
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep UP || exit 1"]
+      start_period: 45s
+      interval: 15s
+      timeout: 10s
+      retries: 20
+    ports:
+      - "8080:8080"
+
+  product-service:
+    build: ./product-service
+    container_name: cloth-product-service
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/productdb
+      DB_USERNAME: user
+      DB_PASSWORD: 1234
+      ELASTICSEARCH_URI: http://elasticsearch:9200
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      FILE_UPLOAD_DIR: /app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/actuator/health | grep UP || exit 1"]
+      start_period: 60s
+      interval: 15s
+      timeout: 10s
+      retries: 20
+    ports:
+      - "8081:8081"
+    volumes:
+      - product_uploads:/app/uploads
+
+  cart-service:
+    build: ./cart-service
+    container_name: cloth-cart-service
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      PRODUCT_SERVICE_URL: http://product-service:8081/products
+    depends_on:
+      redis:
+        condition: service_healthy
+      product-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8082/actuator/health | grep UP || exit 1"]
+      start_period: 45s
+      interval: 15s
+      timeout: 10s
+      retries: 20
+    ports:
+      - "8082:8082"
+
+  payment-service:
+    build: ./payment-service
+    container_name: cloth-payment-service
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/paymentdb
+      DB_USERNAME: user
+      DB_PASSWORD: 1234
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8084/actuator/health | grep UP || exit 1"]
+      start_period: 45s
+      interval: 15s
+      timeout: 10s
+      retries: 20
+    ports:
+      - "8084:8084"
+
+  order-service:
+    build: ./order-service
+    container_name: cloth-order-service
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/orderdb
+      DB_USERNAME: user
+      DB_PASSWORD: 1234
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      CART_SERVICE_URL: http://cart-service:8082/cart
+      PRODUCT_SERVICE_URL: http://product-service:8081/products
+      PAYMENT_SERVICE_URL: http://payment-service:8084/payments
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      cart-service:
+        condition: service_healthy
+      product-service:
+        condition: service_healthy
+      payment-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8083/actuator/health | grep UP || exit 1"]
+      start_period: 60s
+      interval: 15s
+      timeout: 10s
+      retries: 20
+    ports:
+      - "8083:8083"
+
+  inventory-service:
+    build: ./inventory-service
+    container_name: cloth-inventory-service
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/inventorydb
+      DB_USERNAME: user
+      DB_PASSWORD: 1234
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      PRODUCT_SERVICE_URL: http://product-service:8081/products
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      product-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8086/actuator/health | grep UP || exit 1"]
+      start_period: 60s
+      interval: 15s
+      timeout: 10s
+      retries: 20
+    ports:
+      - "8086:8086"
+
+  notification-service:
+    build: ./notification-service
+    container_name: cloth-notification-service
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/notificationdb
+      DB_USERNAME: user
+      DB_PASSWORD: 1234
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8087/actuator/health | grep UP || exit 1"]
+      start_period: 45s
+      interval: 15s
+      timeout: 10s
+      retries: 20
+    ports:
+      - "8087:8087"
+
+  gateway-service:
+    build: ./gateway-service
+    container_name: cloth-gateway-service
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:8080
+      PRODUCT_SERVICE_URL: http://product-service:8081
+      CART_SERVICE_URL: http://cart-service:8082
+      ORDER_SERVICE_URL: http://order-service:8083
+      PAYMENT_SERVICE_URL: http://payment-service:8084
+      INVENTORY_SERVICE_URL: http://inventory-service:8086
+      NOTIFICATION_SERVICE_URL: http://notification-service:8087
+      JWT_SECRET: this-is-my-super-secret-key-which-is-very-long-123456
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      product-service:
+        condition: service_healthy
+      cart-service:
+        condition: service_healthy
+      payment-service:
+        condition: service_healthy
+      order-service:
+        condition: service_healthy
+      inventory-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8085/actuator/health | grep UP || exit 1"]
+      start_period: 60s
+      interval: 15s
+      timeout: 10s
+      retries: 20
+    ports:
+      - "8085:8085"
+
+volumes:
+  postgres_data:
+  elasticsearch_data:
+  product_uploads:

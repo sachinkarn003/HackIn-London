@@ -1,0 +1,47 @@
+spring:
+  application:
+    name: inventory-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/inventorydb}
+    username: ${DB_USERNAME:user}
+    password: ${DB_PASSWORD:1234}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: false
+    open-in-view: false
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: ${spring.application.name}
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.karn01.inventoryservice.event"
+        spring.json.use.type.headers: false
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+server:
+  port: ${SERVER_PORT:8086}
+
+app:
+  kafka:
+    topics:
+      inventory-reservation-requested: ${INVENTORY_RESERVATION_REQUESTED_TOPIC:cloth.inventory.reservation.requested}
+      inventory-reservation-requested-dlq: ${INVENTORY_RESERVATION_REQUESTED_DLQ_TOPIC:cloth.inventory.reservation.requested.dlq}
+      inventory-reservation-completed: ${INVENTORY_RESERVATION_COMPLETED_TOPIC:cloth.inventory.reservation.completed}
+  services:
+    product-service-url: ${PRODUCT_SERVICE_URL:http://localhost:8081/products}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus

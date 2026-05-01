@@ -1,0 +1,52 @@
+spring:
+  application:
+    name: order-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/orderdb}
+    username: ${DB_USERNAME:user}
+    password: ${DB_PASSWORD:1234}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: false
+    open-in-view: false
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: ${spring.application.name}
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.karn01.orderservice.event"
+        spring.json.use.type.headers: false
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+server:
+  port: ${SERVER_PORT:8083}
+
+app:
+  kafka:
+    topics:
+      payment-status: ${PAYMENT_STATUS_TOPIC:cloth.payment.status}
+      payment-status-dlq: ${PAYMENT_STATUS_DLQ_TOPIC:cloth.payment.status.dlq}
+      inventory-reservation-requested: ${INVENTORY_RESERVATION_REQUESTED_TOPIC:cloth.inventory.reservation.requested}
+      inventory-reservation-completed: ${INVENTORY_RESERVATION_COMPLETED_TOPIC:cloth.inventory.reservation.completed}
+      inventory-reservation-completed-dlq: ${INVENTORY_RESERVATION_COMPLETED_DLQ_TOPIC:cloth.inventory.reservation.completed.dlq}
+      order-lifecycle: ${ORDER_LIFECYCLE_TOPIC:cloth.order.lifecycle}
+  services:
+    cart-service-url: ${CART_SERVICE_URL:http://localhost:8082/cart}
+    product-service-url: ${PRODUCT_SERVICE_URL:http://localhost:8081/products}
+    payment-service-url: ${PAYMENT_SERVICE_URL:http://localhost:8084/payments}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus

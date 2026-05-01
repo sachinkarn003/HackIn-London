@@ -1,0 +1,34 @@
+spring:
+  application:
+    name: auth-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/authdb}
+    username: ${DB_USERNAME:user}
+    password: ${DB_PASSWORD:1234}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: false
+    open-in-view: false
+
+server:
+  port: ${SERVER_PORT:8080}
+
+app:
+  security:
+    jwt-secret: ${JWT_SECRET:this-is-my-super-secret-key-which-is-very-long-123456}
+    jwt-expiration-ms: ${JWT_EXPIRATION_MS:86400000}
+  bootstrap-admin:
+    name: ${BOOTSTRAP_ADMIN_NAME:Admin User}
+    email: ${BOOTSTRAP_ADMIN_EMAIL:admin@cloth.local}
+    password: ${BOOTSTRAP_ADMIN_PASSWORD:Admin@12345}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus

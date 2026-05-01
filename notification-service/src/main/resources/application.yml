@@ -1,0 +1,41 @@
+spring:
+  application:
+    name: notification-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/notificationdb}
+    username: ${DB_USERNAME:user}
+    password: ${DB_PASSWORD:1234}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: false
+    open-in-view: false
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: ${spring.application.name}
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.karn01.notificationservice.event"
+        spring.json.use.type.headers: false
+
+server:
+  port: ${SERVER_PORT:8087}
+
+app:
+  kafka:
+    topics:
+      order-lifecycle: ${ORDER_LIFECYCLE_TOPIC:cloth.order.lifecycle}
+      payment-status: ${PAYMENT_STATUS_TOPIC:cloth.payment.status}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus

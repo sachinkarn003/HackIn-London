@@ -1,0 +1,14 @@
+[
+  {
+    "id": 1,
+    "name": "Modern LED Bedroom Lamp",
+    "price": 1500,
+    "description": "Warm light lamp perfect for bedroom decor"
+  },
+  {
+    "id": 2,
+    "name": "Study Table Lamp",
+    "price": 800,
+    "description": "Bright light for studying and work"
+  }
+]
